@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>✋ Vẽ 3D Bằng Tay</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --accent: #00f5a0;
+    --accent2: #00d9f5;
+    --danger: #ff4757;
+    --purple: #a55eea;
+    --bg: #060610;
+    --surface: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --text: rgba(255,255,255,0.85);
+    --muted: rgba(255,255,255,0.35);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    font-family: 'DM Sans', sans-serif;
+    overflow: hidden;
+    color: var(--text);
+  }
+
+  #app { width: 100vw; height: 100vh; position: relative; }
+
+  #video {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    opacity: 0.25;
+  }
+
+  #canvas3d, #canvasHand {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #canvasHand { transform: scaleX(-1); }
+
+  /* ── LOADING ─────────────────────────────── */
+  #loading {
+    position: absolute; inset: 0;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 200;
+    gap: 16px;
+  }
+
+  .load-logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 42px;
+    letter-spacing: -2px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+
+  .load-sub {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .load-bar-wrap {
+    width: 200px;
+    height: 2px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .load-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    animation: loadpulse 1.8s ease-in-out infinite;
+  }
+  @keyframes loadpulse {
+    0% { width: 0%; margin-left: 0; }
+    50% { width: 80%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+
+  #load-text {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* ── STATUS BAR ─────────────────────────── */
+  #status-bar {
+    position: absolute;
+    top: 20px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(6,6,16,0.75);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 8px 18px;
+    backdrop-filter: blur(20px);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  #status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.4s;
+  }
+  #status-dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: blink 1s ease infinite; }
+  #status-dot.drawing { background: #ffbe21; box-shadow: 0 0 8px #ffbe21; }
+  #status-dot.error { background: var(--danger); }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.4} }
+
+  #status-text {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── GESTURES HINT ──────────────────────── */
+  #hints {
+    position: absolute;
+    top: 68px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 16px;
+    pointer-events: none;
+  }
+
+  .hint-chip {
+    background: rgba(6,6,16,0.5);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--muted);
+    backdrop-filter: blur(10px);
+    white-space: nowrap;
+  }
+  .hint-chip span { color: var(--accent); }
+
+  /* ── LEFT PANEL ─────────────────────────── */
+  #panel-left {
+    position: absolute;
+    left: 20px; top: 50%;
+    transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 6px;
+    background: rgba(6,6,16,0.75);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 12px 10px;
+    backdrop-filter: blur(20px);
+  }
+
+  .panel-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    text-align: center;
+    padding: 4px 0 2px;
+  }
+
+  .shape-btn {
+    width: 46px; height: 46px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .shape-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: white;
+    border-color: rgba(255,255,255,0.15);
+  }
+  .shape-btn.active {
+    background: rgba(0,245,160,0.12);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 16px rgba(0,245,160,0.15);
+  }
+
+  .shape-btn .tip {
+    position: absolute;
+    left: calc(100% + 10px);
+    background: rgba(6,6,16,0.9);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .shape-btn:hover .tip { opacity: 1; }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
+
+  .action-btn {
+    width: 46px; height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .action-btn:hover { background: rgba(255,255,255,0.08); color: white; }
+  .action-btn.danger:hover { background: rgba(255,71,87,0.15); color: var(--danger); border-color: rgba(255,71,87,0.3); }
+
+  /* ── RIGHT PANEL ────────────────────────── */
+  #panel-right {
+    position: absolute;
+    right: 20px; top: 50%;
+    transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 6px;
+    background: rgba(6,6,16,0.75);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 12px 10px;
+    backdrop-filter: blur(20px);
+    align-items: center;
+  }
+
+  .color-swatch {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .color-swatch::after {
+    content: '';
+    position: absolute; inset: -4px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+  }
+  .color-swatch:hover { transform: scale(1.15); }
+  .color-swatch.active::after { border-color: white; }
+
+  /* ── STATS BOTTOM LEFT ──────────────────── */
+  #stats {
+    position: absolute;
+    bottom: 24px; left: 20px;
+    background: rgba(6,6,16,0.75);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 14px;
+    backdrop-filter: blur(20px);
+    pointer-events: none;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 2;
+  }
+  #stats b { color: var(--accent); font-weight: 400; }
+
+  /* ── SIZE SLIDER ────────────────────────── */
+  #size-wrap {
+    position: absolute;
+    bottom: 24px; right: 20px;
+    background: rgba(6,6,16,0.75);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 14px;
+    backdrop-filter: blur(20px);
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: center;
+  }
+
+  #size-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  #size-slider {
+    -webkit-appearance: none;
+    width: 100px; height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+    outline: none;
+  }
+  #size-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,245,160,0.5);
+  }
+
+  /* ── CURSOR ─────────────────────────────── */
+  #finger-cursor {
+    position: absolute;
+    width: 20px; height: 20px;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    pointer-events: none;
+    transform: translate(-50%,-50%);
+    transition: width 0.15s, height 0.15s, border-color 0.15s;
+    display: none;
+    z-index: 10;
+  }
+  #finger-cursor.drawing {
+    width: 28px; height: 28px;
+    border-color: #ffbe21;
+    box-shadow: 0 0 12px #ffbe2166;
+  }
+  #finger-cursor::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  #finger-cursor.drawing::after { background: #ffbe21; }
+
+  /* ── SCANLINE OVERLAY ───────────────────── */
+  #scanlines {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ── CORNER DECO ────────────────────────── */
+  .corner {
+    position: absolute;
+    width: 20px; height: 20px;
+    pointer-events: none;
+    opacity: 0.3;
+  }
+  .corner.tl { top: 12px; left: 12px; border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); }
+  .corner.tr { top: 12px; right: 12px; border-top: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+  .corner.bl { bottom: 12px; left: 12px; border-bottom: 1px solid var(--accent); border-left: 1px solid var(--accent); }
+  .corner.br { bottom: 12px; right: 12px; border-bottom: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas3d"></canvas>
+  <canvas id="canvasHand"></canvas>
+  <div id="scanlines"></div>
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+  <div id="finger-cursor"></div>
+
+  <!-- LOADING -->
+  <div id="loading">
+    <div class="load-logo">HAND·3D</div>
+    <div class="load-sub">Vẽ không gian với tay không</div>
+    <div class="load-bar-wrap"><div class="load-bar"></div></div>
+    <div id="load-text">Đang khởi động...</div>
+  </div>
+
+  <!-- STATUS -->
+  <div id="status-bar">
+    <div id="status-dot"></div>
+    <div id="status-text">Đang khởi động camera...</div>
+  </div>
+
+  <!-- HINTS -->
+  <div id="hints">
+    <div class="hint-chip"><span>✌️ 2 ngón</span> → Vẽ</div>
+    <div class="hint-chip"><span>✊ Nắm</span> → Dừng</div>
+    <div class="hint-chip"><span>🖐️ 4+ ngón</span> → Xoay cảnh</div>
+  </div>
+
+  <!-- LEFT PANEL: Shapes + Actions -->
+  <div id="panel-left">
+    <div class="panel-label">Hình</div>
+    <button class="shape-btn active" id="btn-free" onclick="setShape('free')">✏️<span class="tip">Vẽ tự do</span></button>
+    <button class="shape-btn" id="btn-cube" onclick="setShape('cube')">⬜<span class="tip">Hình hộp</span></button>
+    <button class="shape-btn" id="btn-sphere" onclick="setShape('sphere')">⚪<span class="tip">Hình cầu</span></button>
+    <button class="shape-btn" id="btn-cone" onclick="setShape('cone')">🔺<span class="tip">Hình nón</span></button>
+    <button class="shape-btn" id="btn-cyl" onclick="setShape('cylinder')">⬭<span class="tip">Hình trụ</span></button>
+    <button class="shape-btn" id="btn-torus" onclick="setShape('torus')">◯<span class="tip">Hình xuyến</span></button>
+    <div class="divider"></div>
+    <div class="panel-label">Lệnh</div>
+    <button class="action-btn" onclick="undoLast()" title="Hoàn tác">↩</button>
+    <button class="action-btn danger" onclick="clearAll()" title="Xóa tất cả">✕</button>
+  </div>
+
+  <!-- RIGHT PANEL: Colors -->
+  <div id="panel-right">
+    <div class="panel-label">Màu</div>
+    <div class="color-swatch active" style="background:#00f5a0" onclick="setColor('#00f5a0',this)"></div>
+    <div class="color-swatch" style="background:#00d9f5" onclick="setColor('#00d9f5',this)"></div>
+    <div class="color-swatch" style="background:#a55eea" onclick="setColor('#a55eea',this)"></div>
+    <div class="color-swatch" style="background:#ff4757" onclick="setColor('#ff4757',this)"></div>
+    <div class="color-swatch" style="background:#ffbe21" onclick="setColor('#ffbe21',this)"></div>
+    <div class="color-swatch" style="background:#ff6b81" onclick="setColor('#ff6b81',this)"></div>
+    <div class="color-swatch" style="background:#ecf0f1" onclick="setColor('#ecf0f1',this)"></div>
+    <div class="color-swatch" style="background:#2ed573" onclick="setColor('#2ed573',this)"></div>
+  </div>
+
+  <!-- STATS -->
+  <div id="stats">
+    <div>Hình: <b id="obj-count">0</b></div>
+    <div>Mode: <b id="cur-shape">Tự do</b></div>
+    <div>Màu: <b id="cur-color-label">—</b></div>
+  </div>
+
+  <!-- SIZE -->
+  <div id="size-wrap">
+    <div id="size-label">Kích thước</div>
+    <input type="range" id="size-slider" min="0.3" max="2.5" step="0.1" value="1.0"
+      oninput="sizeScale=+this.value">
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ── STATE ─────────────────────────────────────────
+let currentShape = 'free';
+let currentColor = '#00f5a0';
+let sizeScale = 1.0;
+let isDrawing = false;
+let drawStart = null;
+let scene, camera, renderer, orbitControls;
+let objects = [];
+let freeLine = null, freeGeom = null, freePositions = [];
+let rotateMode = false;
+let lastFingerPos = null;
+let previewMesh = null;
+
+const statusDot  = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const loadText   = document.getElementById('load-text');
+const loading    = document.getElementById('loading');
+const video      = document.getElementById('video');
+const canvasHand = document.getElementById('canvasHand');
+const ctx        = canvasHand.getContext('2d');
+const cursor     = document.getElementById('finger-cursor');
+
+// ── HELPERS ───────────────────────────────────────
+function setStatus(msg, mode='idle') {
+  statusText.textContent = msg;
+  statusDot.className = mode === 'active' ? 'active' : mode === 'drawing' ? 'drawing' : mode === 'error' ? 'error' : '';
+}
+
+function setShape(s) {
+  currentShape = s;
+  document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+  const map = {free:'free',cube:'cube',sphere:'sphere',cone:'cone',cylinder:'cyl',torus:'torus'};
+  document.getElementById('btn-' + map[s]).classList.add('active');
+  const names = {free:'Tự do',cube:'Hình hộp',sphere:'Hình cầu',cone:'Hình nón',cylinder:'Hình trụ',torus:'Hình xuyến'};
+  document.getElementById('cur-shape').textContent = names[s];
+}
+
+function setColor(c, el) {
+  currentColor = c;
+  document.querySelectorAll('.color-swatch').forEach(d => d.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('cur-color-label').textContent = c;
+  document.getElementById('cur-color-label').style.color = c;
+}
+
+function undoLast() {
+  if (objects.length > 0) { scene.remove(objects.pop()); updateCount(); }
+}
+function clearAll() {
+  objects.forEach(o => scene.remove(o)); objects = []; updateCount();
+}
+function updateCount() { document.getElementById('obj-count').textContent = objects.length; }
+
+// ── THREE.JS ──────────────────────────────────────
+function initThree() {
+  const canvas3d = document.getElementById('canvas3d');
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x060610, 0.018);
+
+  camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
+  camera.position.set(0, 1, 10);
+
+  renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true, alpha: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setClearColor(0x000000, 0);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const dir1 = new THREE.DirectionalLight(0x00f5a0, 1.0);
+  dir1.position.set(5, 10, 5); scene.add(dir1);
+  const dir2 = new THREE.DirectionalLight(0x00d9f5, 0.5);
+  dir2.position.set(-5, -3, -5); scene.add(dir2);
+  const point = new THREE.PointLight(0xa55eea, 0.6, 40);
+  point.position.set(0, 5, 0); scene.add(point);
+
+  // Grid
+  const grid = new THREE.GridHelper(30, 30, 0x00f5a020, 0x00f5a010);
+  grid.position.y = -3.5; scene.add(grid);
+
+  // Orbit
+  orbitControls = new THREE.OrbitControls(camera, canvas3d);
+  orbitControls.enableDamping = true;
+  orbitControls.dampingFactor = 0.08;
+  orbitControls.enabled = false;
+
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+    canvasHand.width = innerWidth;
+    canvasHand.height = innerHeight;
+  });
+
+  animate();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  orbitControls.update();
+  // gentle auto-rotate on objects
+  objects.forEach((o, i) => {
+    if (o.isMesh && !isDrawing) {
+      o.rotation.y += 0.002 * Math.sin(Date.now()*0.001 + i);
+    }
+  });
+  renderer.render(scene, camera);
+}
+
+function screenToWorld(sx, sy) {
+  const x = (sx / innerWidth) * 2 - 1;
+  const y = -(sy / innerHeight) * 2 + 1;
+  const vec = new THREE.Vector3(x, y, 0.5);
+  vec.unproject(camera);
+  const dir = vec.sub(camera.position).normalize();
+  return camera.position.clone().addScaledVector(dir, 7);
+}
+
+function makeMat(col, opacity=0.88) {
+  return new THREE.MeshPhongMaterial({
+    color: new THREE.Color(col),
+    transparent: true, opacity,
+    shininess: 120,
+    emissive: new THREE.Color(col).multiplyScalar(0.08)
+  });
+}
+
+function makeGeo(shape, s) {
+  const ss = s * sizeScale;
+  if (shape === 'cube')     return new THREE.BoxGeometry(ss, ss, ss);
+  if (shape === 'sphere')   return new THREE.SphereGeometry(ss*0.6, 32, 32);
+  if (shape === 'cone')     return new THREE.ConeGeometry(ss*0.5, ss*1.3, 32);
+  if (shape === 'cylinder') return new THREE.CylinderGeometry(ss*0.4, ss*0.4, ss*1.3, 32);
+  if (shape === 'torus')    return new THREE.TorusGeometry(ss*0.5, ss*0.18, 16, 60);
+  return null;
+}
+
+function addShape(start, end) {
+  const mid = start.clone().add(end).multiplyScalar(0.5);
+  const size = Math.max(start.distanceTo(end) * 0.5, 0.3);
+  const geo = makeGeo(currentShape, size);
+  if (!geo) return;
+
+  const mat = makeMat(currentColor);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(mid);
+
+  // Edge glow
+  const edgeMat = new THREE.LineBasicMaterial({
+    color: new THREE.Color(currentColor).multiplyScalar(2),
+    transparent: true, opacity: 0.4
+  });
+  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+
+  scene.add(mesh);
+  objects.push(mesh);
+  updateCount();
+}
+
+function updatePreview(start, end) {
+  if (previewMesh) { scene.remove(previewMesh); previewMesh = null; }
+  const size = Math.max(start.distanceTo(end) * 0.5, 0.2);
+  const geo = makeGeo(currentShape, size);
+  if (!geo) return;
+  previewMesh = new THREE.Mesh(geo, makeMat(currentColor, 0.35));
+  previewMesh.position.copy(start.clone().add(end).multiplyScalar(0.5));
+  scene.add(previewMesh);
+}
+
+// ── FREE DRAW ─────────────────────────────────────
+function startFreeDraw(wp) {
+  freePositions = [wp.x, wp.y, wp.z];
+  freeGeom = new THREE.BufferGeometry();
+  freeGeom.setAttribute('position', new THREE.Float32BufferAttribute(freePositions, 3));
+  const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(currentColor), linewidth: 2 });
+  freeLine = new THREE.Line(freeGeom, mat);
+  scene.add(freeLine);
+}
+
+function extendFreeDraw(wp) {
+  if (!freeLine) return;
+  freePositions.push(wp.x, wp.y, wp.z);
+  freeGeom.setAttribute('position', new THREE.Float32BufferAttribute(freePositions, 3));
+  freeGeom.attributes.position.needsUpdate = true;
+  freeGeom.computeBoundingSphere();
+}
+
+function endFreeDraw() {
+  if (freeLine) { objects.push(freeLine); updateCount(); freeLine = freeGeom = null; }
+}
+
+// ── HAND OVERLAY ──────────────────────────────────
+const CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[0,17],[17,18],[18,19],[19,20]
+];
+const TIPS = [4,8,12,16,20];
+
+function drawHand(lm) {
+  ctx.clearRect(0, 0, canvasHand.width, canvasHand.height);
+  const w = canvasHand.width, h = canvasHand.height;
+
+  // Bones
+  ctx.lineWidth = 1.5;
+  CONNECTIONS.forEach(([a,b]) => {
+    const A = lm[a], B = lm[b];
+    const grd = ctx.createLinearGradient(A.x*w, A.y*h, B.x*w, B.y*h);
+    grd.addColorStop(0, 'rgba(0,245,160,0.5)');
+    grd.addColorStop(1, 'rgba(0,217,245,0.3)');
+    ctx.strokeStyle = grd;
+    ctx.beginPath();
+    ctx.moveTo(A.x*w, A.y*h);
+    ctx.lineTo(B.x*w, B.y*h);
+    ctx.stroke();
+  });
+
+  // Joints
+  lm.forEach((l, i) => {
+    const isTip = TIPS.includes(i);
+    ctx.beginPath();
+    ctx.arc(l.x*w, l.y*h, isTip ? 5 : 2.5, 0, Math.PI*2);
+    ctx.fillStyle = isTip ? 'rgba(0,245,160,0.9)' : 'rgba(255,255,255,0.4)';
+    ctx.fill();
+  });
+
+  // Drawing ring on index tip
+  if (isDrawing) {
+    const tip = lm[8];
+    ctx.beginPath();
+    ctx.arc(tip.x*w, tip.y*h, 16, 0, Math.PI*2);
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  }
+}
+
+// ── GESTURE ──────────────────────────────────────
+function countFingers(lm) {
+  const tips = [8,12,16,20], pips = [6,10,14,18];
+  let n = 0;
+  for (let i = 0; i < 4; i++) if (lm[tips[i]].y < lm[pips[i]].y) n++;
+  if (Math.abs(lm[4].x - lm[3].x) > 0.04) n++;
+  return n;
+}
+function isPinch(lm) {
+  const d = Math.sqrt((lm[8].x-lm[4].x)**2 + (lm[8].y-lm[4].y)**2);
+  return d < 0.08;
+}
+
+// ── MEDIAPIPE ────────────────────────────────────
+async function loadScript(src) {
+  return new Promise(r => { const s = document.createElement('script'); s.src = src; s.onload = r; document.head.appendChild(s); });
+}
+
+async function main() {
+  initThree();
+  canvasHand.width = innerWidth;
+  canvasHand.height = innerHeight;
+
+  setStatus('Đang tải MediaPipe...', 'idle');
+  loadText.textContent = 'Đang tải thư viện...';
+
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js');
+
+    loadText.textContent = 'Đang bật camera...';
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user', width:1280, height:720 } });
+    video.srcObject = stream;
+    await video.play();
+
+    const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+    hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.7, minTrackingConfidence:0.6 });
+
+    hands.onResults(results => {
+      if (results.multiHandLandmarks?.length > 0) {
+        const lm = results.multiHandLandmarks[0];
+        drawHand(lm);
+
+        const nF = countFingers(lm);
+        const tip = lm[8];
+        const sx = tip.x * innerWidth;
+        const sy = tip.y * innerHeight;
+        const wp = screenToWorld(sx, sy);
+
+        // Cursor
+        cursor.style.display = 'block';
+        cursor.style.left = sx + 'px';
+        cursor.style.top = sy + 'px';
+        cursor.className = isDrawing ? 'drawing' : '';
+
+        if (nF >= 4) {
+          if (!rotateMode) {
+            rotateMode = true;
+            orbitControls.enabled = true;
+            setStatus('🖐️ Xoay cảnh — dùng chuột', 'active');
+          }
+        } else {
+          if (rotateMode) { rotateMode = false; orbitControls.enabled = false; }
+        }
+
+        if (!rotateMode) {
+          if (nF === 2 || (nF === 1 && !isPinch(lm))) {
+            if (!isDrawing) {
+              isDrawing = true;
+              drawStart = wp.clone();
+              if (currentShape === 'free') startFreeDraw(wp);
+              setStatus('✍️ Đang vẽ...', 'drawing');
+            } else {
+              if (currentShape === 'free') {
+                const dist = lastFingerPos ? wp.distanceTo(lastFingerPos) : 1;
+                if (dist > 0.04) extendFreeDraw(wp);
+              } else {
+                updatePreview(drawStart, wp);
+              }
+            }
+          } else {
+            if (isDrawing) {
+              if (previewMesh) { scene.remove(previewMesh); previewMesh = null; }
+              if (currentShape !== 'free') addShape(drawStart, wp);
+              else endFreeDraw();
+              isDrawing = false; drawStart = null;
+              setStatus('✅ Đã thêm!', 'active');
+              setTimeout(() => setStatus('✌️ 2 ngón để vẽ', 'active'), 1500);
+            } else {
+              setStatus('👀 Tay phát hiện — ✌️ 2 ngón để vẽ', 'active');
+            }
+          }
+          lastFingerPos = wp.clone();
+        }
+
+      } else {
+        ctx.clearRect(0, 0, canvasHand.width, canvasHand.height);
+        cursor.style.display = 'none';
+        if (isDrawing) {
+          if (previewMesh) { scene.remove(previewMesh); previewMesh = null; }
+          if (currentShape === 'free') endFreeDraw();
+          isDrawing = false; drawStart = null;
+        }
+        setStatus('🤚 Đưa tay vào camera...', 'idle');
+      }
+    });
+
+    const camUtil = new Camera(video, { onFrame: async () => { await hands.send({ image: video }); }, width:1280, height:720 });
+    camUtil.start();
+
+    // Fade out loading
+    let op = 1;
+    const fade = setInterval(() => {
+      op -= 0.06; loading.style.opacity = op;
+      if (op <= 0) { loading.style.display = 'none'; clearInterval(fade); }
+    }, 25);
+
+    setStatus('🤚 Đưa tay vào camera...', 'idle');
+
+  } catch(e) {
+    console.error(e);
+    setStatus('❌ Lỗi: ' + e.message, 'error');
+    loading.innerHTML = `
+      <div class="load-logo" style="font-size:28px">⚠ LỖI CAMERA</div>
+      <div style="color:rgba(255,71,87,0.8);font-size:13px;margin-top:8px">${e.message}</div>
+      <div style="color:var(--muted);font-size:11px;margin-top:8px;text-align:center">Cần HTTPS và cho phép quyền camera</div>
+    `;
+  }
+}
+
+// init color label
+document.getElementById('cur-color-label').textContent = currentColor;
+document.getElementById('cur-color-label').style.color = currentColor;
+
+main();
+</script>
+</body>
+</html>
